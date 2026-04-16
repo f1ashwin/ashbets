@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PuntLab",
+  title: "AshBets",
   description: "Sports betting intelligence dashboard - value betting, odds comparison, CLV tracking",
 };
 

@@ -21,7 +21,7 @@ export default function DashboardLayout({
       {/* Sidebar */}
       <aside className="w-64 border-r border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950 flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-          <h1 className="text-xl font-bold tracking-tight">PuntLab</h1>
+          <h1 className="text-xl font-bold tracking-tight">AshBets</h1>
           <p className="text-xs text-gray-500 mt-1">Betting Intelligence</p>
         </div>
         <nav className="flex-1 p-2 space-y-1">

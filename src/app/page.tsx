@@ -1,7 +1,7 @@
 export default function Home() {
   return (
     <div className="max-w-6xl mx-auto py-8">
-      <h1 className="text-3xl font-bold mb-2">PuntLab</h1>
+      <h1 className="text-3xl font-bold mb-2">AshBets</h1>
       <p className="text-gray-500 mb-8">
         Sports betting intelligence dashboard — value betting, odds comparison,
         CLV tracking
