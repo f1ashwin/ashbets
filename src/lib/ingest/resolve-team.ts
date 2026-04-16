@@ -235,6 +235,7 @@ export async function resolveTeam(
     .innerJoin(teams, eq(teams.id, teamAliases.teamId))
     .where(
       and(
+        eq(teamAliases.sport, sport),
         eq(teamAliases.source, source),
         eq(teamAliases.externalName, externalName)
       )
@@ -256,6 +257,7 @@ export async function resolveTeam(
       .insert(teamAliases)
       .values({
         teamId: candidate.team.id,
+        sport,
         source,
         externalId: externalId ?? null,
         externalName,
@@ -284,7 +286,11 @@ export async function resolveTeam(
         : null,
     })
     .onConflictDoUpdate({
-      target: [pendingAliases.source, pendingAliases.externalName],
+      target: [
+        pendingAliases.sport,
+        pendingAliases.source,
+        pendingAliases.externalName,
+      ],
       set: {
         suggestedTeamId: shouldSuggest?.team.id ?? null,
         suggestedScore: shouldSuggest

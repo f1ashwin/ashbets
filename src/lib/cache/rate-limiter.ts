@@ -1,17 +1,17 @@
 import { Ratelimit } from "@upstash/ratelimit";
+import { apiBudget } from "@/lib/config/api-budget";
 import { getRedis } from "./redis";
 
 /**
- * Rate limiters per external API.
- * The Odds API: 500 req/month ≈ 16/day. Be very conservative.
- * API-Football: 100 req/day on free tier.
- * CricketData: 100k req/hour (generous).
- * FBref scraping: 10 req/min.
+ * Rate limiters per external API. Quotas come from `apiBudget` so a paid-tier
+ * upgrade propagates to the runtime limiter without code changes.
+ * Defaults: Odds API 500/mo ≈ 16/day, API-Football 100/day, CricketData
+ * 1000/hr, FBref 10/min.
  */
 export function getOddsApiLimiter() {
   return new Ratelimit({
     redis: getRedis(),
-    limiter: Ratelimit.slidingWindow(16, "1 d"),
+    limiter: Ratelimit.slidingWindow(apiBudget.oddsApi.dailyLimit, "1 d"),
     prefix: "ratelimit:odds-api",
   });
 }
@@ -19,7 +19,7 @@ export function getOddsApiLimiter() {
 export function getApiFootballLimiter() {
   return new Ratelimit({
     redis: getRedis(),
-    limiter: Ratelimit.slidingWindow(100, "1 d"),
+    limiter: Ratelimit.slidingWindow(apiBudget.apiFootball.dailyLimit, "1 d"),
     prefix: "ratelimit:api-football",
   });
 }
@@ -27,7 +27,7 @@ export function getApiFootballLimiter() {
 export function getCricketDataLimiter() {
   return new Ratelimit({
     redis: getRedis(),
-    limiter: Ratelimit.slidingWindow(1000, "1 h"),
+    limiter: Ratelimit.slidingWindow(apiBudget.cricketData.hourlyLimit, "1 h"),
     prefix: "ratelimit:cricket-data",
   });
 }
@@ -35,7 +35,7 @@ export function getCricketDataLimiter() {
 export function getFbrefLimiter() {
   return new Ratelimit({
     redis: getRedis(),
-    limiter: Ratelimit.slidingWindow(10, "1 m"),
+    limiter: Ratelimit.slidingWindow(apiBudget.fbref.perMinuteLimit, "1 m"),
     prefix: "ratelimit:fbref",
   });
 }

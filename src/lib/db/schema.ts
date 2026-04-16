@@ -29,7 +29,11 @@ export const teams = pgTable(
   ]
 );
 
-// Source-specific name/id → canonical team. One alias per (source, externalName).
+// Source-specific name/id → canonical team. One alias per (sport, source, externalName).
+// Sport is part of the key because upstream sources reuse names across sports
+// (e.g. "Mumbai Indians" cricket team vs a hypothetical football namesake);
+// without sport in the unique key, one sport's alias would silently overwrite
+// the other's or point to the wrong canonical team.
 export const teamAliases = pgTable(
   "team_aliases",
   {
@@ -37,13 +41,18 @@ export const teamAliases = pgTable(
     teamId: uuid("team_id")
       .references(() => teams.id, { onDelete: "cascade" })
       .notNull(),
+    sport: text("sport").notNull(), // 'football' | 'cricket'
     source: text("source").notNull(), // 'odds-api' | 'api-football' | 'cricketdata'
     externalId: text("external_id"), // nullable — some sources key only by name
     externalName: text("external_name").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex("team_aliases_source_name_idx").on(table.source, table.externalName),
+    uniqueIndex("team_aliases_sport_source_name_idx").on(
+      table.sport,
+      table.source,
+      table.externalName
+    ),
     index("team_aliases_team_idx").on(table.teamId),
   ]
 );
@@ -51,6 +60,7 @@ export const teamAliases = pgTable(
 // Fuzzy-match candidates that the resolver could not accept automatically.
 // Prediction runs refuse to proceed while any unresolved row exists for an
 // involved fixture — forces explicit human triage rather than silent misjoin.
+// Uniqueness is scoped by sport for the same reason as team_aliases.
 export const pendingAliases = pgTable(
   "pending_aliases",
   {
@@ -65,7 +75,11 @@ export const pendingAliases = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("pending_aliases_unique_idx").on(table.source, table.externalName),
+    uniqueIndex("pending_aliases_unique_idx").on(
+      table.sport,
+      table.source,
+      table.externalName
+    ),
   ]
 );
 
@@ -85,9 +99,13 @@ export const eventMapping = pgTable(
   },
   (table) => [
     uniqueIndex("event_mapping_canonical_idx").on(table.canonicalEventId),
-    index("event_mapping_odds_api_idx").on(table.oddsApiId),
-    index("event_mapping_api_football_idx").on(table.apiFootballId),
-    index("event_mapping_cricket_data_idx").on(table.cricketDataId),
+    // Upstream IDs are unique so one upstream fixture can't map to two canonical
+    // events. Postgres treats NULLs as distinct by default, so rows whose ID for
+    // a given source is null (the source doesn't cover that fixture) don't
+    // collide with each other.
+    uniqueIndex("event_mapping_odds_api_idx").on(table.oddsApiId),
+    uniqueIndex("event_mapping_api_football_idx").on(table.apiFootballId),
+    uniqueIndex("event_mapping_cricket_data_idx").on(table.cricketDataId),
   ]
 );
 

@@ -8,26 +8,25 @@
  * Exits non-zero if any API is projected above 80 % of its tier, so the user
  * sees the overrun before Odds API starts 429-ing on a Saturday noon.
  *
- * Keep the cadence constants here in sync with `docs/api-budget.md` and
- * `vercel.json`. Drift between docs, code, and this script is the failure
- * mode we're defending against — if you change one, change all three.
+ * Tier limits come from `src/lib/config/api-budget.ts` — the same module the
+ * runtime rate limiter uses — so raising a paid-tier env var lifts both
+ * together. Keep cadences here in sync with `docs/api-budget.md` and
+ * `vercel.json`.
  */
 
-interface ApiBudget {
+import { apiBudget } from "@/lib/config/api-budget";
+
+interface ApiBudgetRow {
   name: string;
   monthlyLimit: number;
   projectedPerDay: number;
   description: string;
 }
 
-const ODDS_API_MONTHLY_LIMIT = Number(
-  process.env.ODDS_API_MONTHLY_LIMIT ?? 500 // free tier
-);
-
-const budgets: ApiBudget[] = [
+const budgets: ApiBudgetRow[] = [
   {
     name: "The Odds API",
-    monthlyLimit: ODDS_API_MONTHLY_LIMIT,
+    monthlyLimit: apiBudget.oddsApi.monthlyLimit,
     // fixtures cron every 2d × 2 sports = 1/day avg
     // odds cron every 4h × 2 sports = 12/day
     // settlement / closing line captures ≈ 1/day
@@ -36,7 +35,7 @@ const budgets: ApiBudget[] = [
   },
   {
     name: "API-Football",
-    monthlyLimit: 100 * 30, // 100/day hard cap, ~3000/mo
+    monthlyLimit: apiBudget.apiFootball.monthlyLimit,
     // 4 leagues × 1 fixtures call every 2d = 2/day
     // team stats cached 7d, ~10/week = 1.4/day
     // H2H only for high-liquidity events, ~0.7/day
@@ -45,7 +44,7 @@ const budgets: ApiBudget[] = [
   },
   {
     name: "CricketData",
-    monthlyLimit: 1000 * 24 * 30, // 1000/hr ceiling
+    monthlyLimit: apiBudget.cricketData.monthlyLimit,
     projectedPerDay: 4,
     description: "matches + series + team form lookups",
   },
