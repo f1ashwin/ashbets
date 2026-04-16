@@ -17,8 +17,8 @@ export const events = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     externalId: text("external_id").notNull(),
-    source: text("source").notNull(), // 'odds-api' | 'api-football' | 'cricketdata' | 'api-mma'
-    sport: text("sport").notNull(), // 'football' | 'mma' | 'cricket'
+    source: text("source").notNull(), // 'odds-api' | 'api-football' | 'cricketdata'
+    sport: text("sport").notNull(), // 'football' | 'cricket'
     league: text("league"),
     homeTeam: text("home_team").notNull(),
     awayTeam: text("away_team").notNull(),

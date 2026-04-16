@@ -3,7 +3,6 @@ import Link from "next/link";
 const navItems = [
   { href: "/", label: "Dashboard", icon: "📊" },
   { href: "/football", label: "Football", icon: "⚽" },
-  { href: "/mma", label: "UFC / MMA", icon: "🥊" },
   { href: "/cricket", label: "Cricket", icon: "🏏" },
   { href: "/predictions", label: "Value Bets", icon: "🎯" },
   { href: "/bets", label: "Bet Tracker", icon: "📝" },
@@ -38,7 +37,7 @@ export default function DashboardLayout({
           ))}
         </nav>
         <div className="p-4 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-500">
-          <div>Max daily stake: €5</div>
+          <div>Max per bet: €10</div>
           <div>Strategy: Value betting + CLV</div>
         </div>
       </aside>

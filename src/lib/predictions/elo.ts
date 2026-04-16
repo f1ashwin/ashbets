@@ -11,7 +11,6 @@ const HOME_ADVANTAGE = 65; // ~65 Elo points for home advantage in football
 /** K-factors tuned per sport */
 const K_FACTORS: Record<string, number> = {
   football: 20,
-  mma: 40, // Higher K for MMA — upsets are more impactful, fewer fights
   cricket: 25,
 };
 
@@ -78,7 +77,7 @@ export function probabilityToOdds(probability: number): number {
 /**
  * Generate match probabilities from Elo ratings.
  * For football (3-way): uses historical draw rate to split.
- * For MMA/cricket (2-way): direct probability.
+ * For cricket (2-way): direct probability.
  */
 export function matchProbabilities(
   ratingHome: number,
@@ -109,7 +108,7 @@ export function matchProbabilities(
     };
   }
 
-  // 2-way sports (MMA, cricket)
+  // 2-way sport (cricket)
   return {
     home: Math.round(homeWinProb * 1000) / 1000,
     away: Math.round((1 - homeWinProb) * 1000) / 1000,

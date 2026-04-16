@@ -7,7 +7,7 @@ export default function Home() {
         CLV tracking
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="border rounded-lg p-6">
           <div className="text-2xl mb-2">⚽</div>
           <h2 className="text-lg font-semibold">Football</h2>
@@ -15,18 +15,7 @@ export default function Home() {
             EPL, Champions League, Bundesliga, La Liga
           </p>
           <p className="text-xs text-gray-400 mt-2">
-            Models: Dixon-Coles + xG + Elo
-          </p>
-        </div>
-
-        <div className="border rounded-lg p-6">
-          <div className="text-2xl mb-2">🥊</div>
-          <h2 className="text-lg font-semibold">UFC / MMA</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            UFC events, fighter stats, defensive metrics
-          </p>
-          <p className="text-xs text-gray-400 mt-2">
-            Models: Fighter stats + Elo
+            Models: Dixon-Coles + Elo ensemble
           </p>
         </div>
 
@@ -37,7 +26,7 @@ export default function Home() {
             IPL, T20, international — venue + form models
           </p>
           <p className="text-xs text-gray-400 mt-2">
-            Models: Venue + toss + form
+            Models: Elo + form + venue
           </p>
         </div>
       </div>
@@ -58,8 +47,8 @@ export default function Home() {
             <div className="text-gray-500">Half-Kelly, max 2% per bet</div>
           </div>
           <div>
-            <div className="font-medium">Daily Limit</div>
-            <div className="text-gray-500">$5/day maximum</div>
+            <div className="font-medium">Per-Bet Cap</div>
+            <div className="text-gray-500">€10 max (2% of €500 bankroll)</div>
           </div>
         </div>
       </div>

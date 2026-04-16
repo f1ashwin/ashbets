@@ -1,4 +1,4 @@
-export type Sport = "football" | "mma" | "cricket";
+export type Sport = "football" | "cricket";
 
 export type EventStatus = "upcoming" | "live" | "completed" | "cancelled";
 
@@ -41,13 +41,6 @@ export const SPORT_CONFIGS: Record<Sport, SportConfig> = {
     icon: "circle-dot",
     color: "emerald",
     defaultLeagues: [39, 2, 3, 78, 135, 140, 61],
-  },
-  mma: {
-    key: "mma",
-    label: "UFC / MMA",
-    oddsApiKeys: ["mma_mixed_martial_arts"],
-    icon: "swords",
-    color: "red",
   },
   cricket: {
     key: "cricket",

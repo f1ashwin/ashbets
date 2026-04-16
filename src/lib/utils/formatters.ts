@@ -64,16 +64,6 @@ export function halfKellyFraction(probability: number, decimalOdds: number): num
 }
 
 /**
- * Calculate Closing Line Value.
- * Positive = you got better odds than closing.
- */
-export function closingLineValue(oddsTaken: number, closingOdds: number): number {
-  const impliedTaken = 1 / oddsTaken;
-  const impliedClosing = 1 / closingOdds;
-  return impliedClosing - impliedTaken;
-}
-
-/**
  * Format currency amount.
  */
 export function formatCurrency(amount: number, currency = "EUR"): string {

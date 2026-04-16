@@ -17,7 +17,12 @@ export interface ValueBetSignal {
   isValue: boolean; // edge > minimum threshold
 }
 
-const MIN_EDGE_THRESHOLD = 0.02; // 2% minimum edge to qualify as value
+/**
+ * Minimum edge required for a signal to qualify as a value bet.
+ * Read from server env MIN_EDGE (default 0.02 = 2%). Must stay server-side —
+ * exposing this to the client would let a compromised client bypass the filter.
+ */
+const MIN_EDGE_THRESHOLD = Number(process.env.MIN_EDGE ?? 0.02);
 
 /**
  * Evaluate whether a bet offers value.
@@ -77,14 +82,16 @@ export function findBestValue(
 
 /**
  * Calculate recommended stake in currency based on Kelly fraction and bankroll.
+ * Caller must pass the per-bet cap (MAX_BET_EUR). Cap is the absolute ceiling —
+ * the smaller of Kelly-suggested and cap is returned.
  */
 export function recommendedStake(
   kellyFraction: number,
   bankroll: number,
-  maxDailyStake: number
+  maxBetEur: number
 ): number {
   const kellyStake = bankroll * kellyFraction;
-  return Math.min(kellyStake, maxDailyStake);
+  return Math.min(kellyStake, maxBetEur);
 }
 
 /**
