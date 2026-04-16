@@ -11,6 +11,86 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
+// Canonical team identity — one row per distinct team across all data sources.
+// Source-specific names flow through `team_aliases` → `teams`. All downstream
+// joins (Elo, stats cache, event home/away) should use `teams.id`.
+export const teams = pgTable(
+  "teams",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sport: text("sport").notNull(), // 'football' | 'cricket'
+    canonicalName: text("canonical_name").notNull(),
+    country: text("country"),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("teams_sport_name_idx").on(table.sport, table.canonicalName),
+  ]
+);
+
+// Source-specific name/id → canonical team. One alias per (source, externalName).
+export const teamAliases = pgTable(
+  "team_aliases",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    source: text("source").notNull(), // 'odds-api' | 'api-football' | 'cricketdata'
+    externalId: text("external_id"), // nullable — some sources key only by name
+    externalName: text("external_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("team_aliases_source_name_idx").on(table.source, table.externalName),
+    index("team_aliases_team_idx").on(table.teamId),
+  ]
+);
+
+// Fuzzy-match candidates that the resolver could not accept automatically.
+// Prediction runs refuse to proceed while any unresolved row exists for an
+// involved fixture — forces explicit human triage rather than silent misjoin.
+export const pendingAliases = pgTable(
+  "pending_aliases",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sport: text("sport").notNull(),
+    source: text("source").notNull(),
+    externalId: text("external_id"),
+    externalName: text("external_name").notNull(),
+    suggestedTeamId: uuid("suggested_team_id").references(() => teams.id),
+    suggestedScore: numeric("suggested_score", { precision: 5, scale: 4 }),
+    seenAt: timestamp("seen_at", { withTimezone: true }).defaultNow().notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("pending_aliases_unique_idx").on(table.source, table.externalName),
+  ]
+);
+
+// Cross-source event mapping — lets us join a single fixture across Odds API,
+// API-Football, and CricketData despite divergent IDs and team-name spellings.
+export const eventMapping = pgTable(
+  "event_mapping",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    canonicalEventId: uuid("canonical_event_id")
+      .references(() => events.id, { onDelete: "cascade" })
+      .notNull(),
+    oddsApiId: text("odds_api_id"),
+    apiFootballId: text("api_football_id"),
+    cricketDataId: text("cricket_data_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("event_mapping_canonical_idx").on(table.canonicalEventId),
+    index("event_mapping_odds_api_idx").on(table.oddsApiId),
+    index("event_mapping_api_football_idx").on(table.apiFootballId),
+    index("event_mapping_cricket_data_idx").on(table.cricketDataId),
+  ]
+);
+
 // Unified events across all sports
 export const events = pgTable(
   "events",
@@ -83,6 +163,10 @@ export const bets = pgTable(
     edgePercent: numeric("edge_percent", { precision: 6, scale: 2 }), // edge at time of bet
     notes: text("notes"),
     tags: text("tags").array(),
+    // true while BACKTEST_GATE_PASSED=false — bankroll rows skip real-money
+    // accounting for paper bets, but CLV + settlement logic still run so we
+    // can measure if model quality holds up in live conditions before scaling.
+    paperOnly: boolean("paper_only").default(true).notNull(),
     placedAt: timestamp("placed_at", { withTimezone: true }).defaultNow().notNull(),
     settledAt: timestamp("settled_at", { withTimezone: true }),
   },
@@ -153,9 +237,14 @@ export const predictions = pgTable(
     eventId: uuid("event_id")
       .references(() => events.id, { onDelete: "cascade" })
       .notNull(),
-    model: text("model").notNull(), // elo | dixon-coles | poisson | fighter | cricket | ensemble
+    model: text("model").notNull(), // elo | dixon-coles | cricket-form | ensemble
     probabilities: jsonb("probabilities").notNull(), // { home: 0.55, draw: 0.25, away: 0.20 }
-    bestValue: jsonb("best_value"), // { outcome: 'home', bookmaker: 'bet365', odds: 2.1, edge: 0.05 }
+    // bestValue stores the DE-book signal we surface to the user (Tipico/bwin/Interwetten).
+    bestValue: jsonb("best_value"), // { outcome: 'home', bookmaker: 'tipico', odds: 2.1, edge: 0.05 }
+    // pinnacleEdge compares the same model output to the Pinnacle closing-line
+    // proxy — lets the backtest verify the model is sharp independently of the
+    // placement book's margin + DE stake tax.
+    pinnacleEdge: numeric("pinnacle_edge", { precision: 6, scale: 4 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [index("predictions_event_idx").on(table.eventId)]
