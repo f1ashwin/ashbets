@@ -1,3 +1,4 @@
+import { formatDistanceToNowStrict } from "date-fns";
 import type { OddsFormat } from "@/types/sports";
 
 /**
@@ -79,4 +80,16 @@ export function formatCurrency(amount: number, currency = "EUR"): string {
  */
 export function formatPercent(value: number, decimals = 1): string {
   return `${(value * 100).toFixed(decimals)}%`;
+}
+
+/**
+ * Short human-readable age: "3h 42m ago", "2d ago". Used by the freshness
+ * badge so the user sees both the age and the tier (green/amber/red).
+ */
+export function formatAge(recordedAt: Date | string | number): string {
+  const date =
+    typeof recordedAt === "string" || typeof recordedAt === "number"
+      ? new Date(recordedAt)
+      : recordedAt;
+  return `${formatDistanceToNowStrict(date)} ago`;
 }

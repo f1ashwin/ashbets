@@ -3,6 +3,11 @@
  *
  * Core engine for identifying value bets by comparing model probabilities
  * against bookmaker odds. Uses Pinnacle/Betfair as sharp benchmark.
+ *
+ * Kelly capping lives in `recommendedStake()`, not in `evaluateValue()`. The
+ * raw kellyFraction stays uncapped so the tier classifier and UI can reason
+ * about the true size the model wants; the caller applies soft (2%) or hard
+ * (5%) caps depending on risk tolerance and remaining daily spend.
  */
 
 export interface ValueBetSignal {
@@ -13,8 +18,8 @@ export interface ValueBetSignal {
   impliedProbability: number;
   edge: number; // modelProbability - impliedProbability
   ev: number; // expected value per unit staked
-  kellyFraction: number; // half-kelly recommended stake as fraction of bankroll
-  isValue: boolean; // edge > minimum threshold
+  kellyFraction: number; // uncapped half-Kelly fraction of bankroll
+  isValue: boolean; // edge > minimum threshold && ev > 0
 }
 
 /**
@@ -24,9 +29,6 @@ export interface ValueBetSignal {
  */
 const MIN_EDGE_THRESHOLD = Number(process.env.MIN_EDGE ?? 0.02);
 
-/**
- * Evaluate whether a bet offers value.
- */
 export function evaluateValue(
   modelProbability: number,
   decimalOdds: number,
@@ -47,7 +49,7 @@ export function evaluateValue(
     impliedProbability: impliedProb,
     edge,
     ev,
-    kellyFraction: Math.min(halfKelly, 0.02), // cap at 2% of bankroll
+    kellyFraction: halfKelly,
     isValue: edge >= MIN_EDGE_THRESHOLD && ev > 0,
   };
 }
@@ -76,22 +78,67 @@ export function findBestValue(
     }
   }
 
-  // Sort by edge descending
   return signals.sort((a, b) => b.edge - a.edge);
 }
 
+export interface StakeOptions {
+  /** Soft per-bet cap as fraction of bankroll (default 2%). */
+  softCap?: number;
+  /** Hard per-bet cap as fraction of bankroll (default 5%). Never exceeded. */
+  hardCap?: number;
+  /** Remaining daily spend in currency. If set, stake is also capped here. */
+  dailyRemaining?: number;
+  /** Absolute per-bet cap in currency (e.g. €10). Optional. */
+  maxBetCurrency?: number;
+}
+
+export interface RecommendedStakeResult {
+  stake: number;
+  boundBy: "kelly" | "soft_cap" | "hard_cap" | "daily_remaining" | "max_bet";
+}
+
 /**
- * Calculate recommended stake in currency based on Kelly fraction and bankroll.
- * Caller must pass the per-bet cap (MAX_BET_EUR). Cap is the absolute ceiling —
- * the smaller of Kelly-suggested and cap is returned.
+ * Compute the recommended stake in currency from a half-Kelly fraction.
+ * Returns both the stake and which constraint bound it — useful for the
+ * reasoning drawer ("2% soft cap" vs "daily cap reached").
+ *
+ * Ordering of checks matters. We start from the Kelly-suggested stake and
+ * walk down: hard cap clamps first, then the tighter of soft cap and daily
+ * remaining, then an absolute currency cap.
  */
 export function recommendedStake(
   kellyFraction: number,
   bankroll: number,
-  maxBetEur: number
-): number {
-  const kellyStake = bankroll * kellyFraction;
-  return Math.min(kellyStake, maxBetEur);
+  opts: StakeOptions = {}
+): RecommendedStakeResult {
+  const softCap = opts.softCap ?? 0.02;
+  const hardCap = opts.hardCap ?? 0.05;
+
+  const kellyStake = Math.max(0, bankroll * kellyFraction);
+  const hardCapStake = bankroll * hardCap;
+  const softCapStake = bankroll * softCap;
+
+  let stake = kellyStake;
+  let boundBy: RecommendedStakeResult["boundBy"] = "kelly";
+
+  if (stake > hardCapStake) {
+    stake = hardCapStake;
+    boundBy = "hard_cap";
+  }
+  if (stake > softCapStake) {
+    stake = softCapStake;
+    boundBy = "soft_cap";
+  }
+  if (opts.dailyRemaining !== undefined && stake > opts.dailyRemaining) {
+    stake = Math.max(0, opts.dailyRemaining);
+    boundBy = "daily_remaining";
+  }
+  if (opts.maxBetCurrency !== undefined && stake > opts.maxBetCurrency) {
+    stake = opts.maxBetCurrency;
+    boundBy = "max_bet";
+  }
+
+  return { stake, boundBy };
 }
 
 /**

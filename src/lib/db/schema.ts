@@ -159,14 +159,19 @@ export const oddsHistory = pgTable(
   ]
 );
 
-// User's placed bets
+// User's placed bets. For multi-leg bets, top-level `odds` stores the combined
+// odds (product of legs), `combinedOdds` is its explicit copy, and legs live
+// in `bet_legs`. For single bets `legCount=1` and `bet_legs` has no rows for
+// that bet (we don't duplicate a single into a leg row).
 export const bets = pgTable(
   "bets",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    eventId: uuid("event_id").references(() => events.id), // nullable for manual bets
+    eventId: uuid("event_id").references(() => events.id), // nullable for manual bets or accumulators
     sport: text("sport").notNull(),
     betType: text("bet_type").notNull().default("single"), // single | accumulator
+    legCount: integer("leg_count").default(1).notNull(),
+    combinedOdds: numeric("combined_odds", { precision: 12, scale: 4 }), // materialized for accumulators
     market: text("market").notNull(),
     selection: text("selection").notNull(), // what was bet on
     bookmaker: text("bookmaker").notNull(),
@@ -193,6 +198,29 @@ export const bets = pgTable(
     index("bets_placed_at_idx").on(table.placedAt),
     index("bets_sport_idx").on(table.sport),
   ]
+);
+
+// Per-leg rows for multi-leg accumulator bets. Single bets don't have rows.
+export const betLegs = pgTable(
+  "bet_legs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    betId: uuid("bet_id")
+      .references(() => bets.id, { onDelete: "cascade" })
+      .notNull(),
+    eventId: uuid("event_id")
+      .references(() => events.id)
+      .notNull(),
+    market: text("market").notNull(),
+    selection: text("selection").notNull(),
+    odds: numeric("odds", { precision: 10, scale: 4 }).notNull(),
+    modelProbability: numeric("model_probability", { precision: 6, scale: 4 }),
+    closingOdds: numeric("closing_odds", { precision: 10, scale: 4 }),
+    clv: numeric("clv", { precision: 10, scale: 4 }),
+    status: text("status").default("pending").notNull(), // pending | won | lost | void
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("bet_legs_bet_idx").on(table.betId)]
 );
 
 // Bankroll transaction ledger
@@ -256,6 +284,9 @@ export const predictions = pgTable(
       .references(() => events.id, { onDelete: "cascade" })
       .notNull(),
     model: text("model").notNull(), // elo | dixon-coles | cricket-form | ensemble
+    // Free-form version tag so a retrain boundary is distinguishable from old
+    // outputs without a schema change. Compare with string equality; no semver.
+    modelVersion: text("model_version"),
     probabilities: jsonb("probabilities").notNull(), // { home: 0.55, draw: 0.25, away: 0.20 }
     // bestValue stores the DE-book signal we surface to the user (Tipico/bwin/Interwetten).
     bestValue: jsonb("best_value"), // { outcome: 'home', bookmaker: 'tipico', odds: 2.1, edge: 0.05 }
