@@ -4,17 +4,20 @@
  * Run before a PR lands or before triggering Phase A cron routes in prod:
  *   $ npx tsx scripts/check-api-budget.ts
  *
- * Projects monthly upstream call volume from configured cadences and tiers.
- * Exits non-zero if any API is projected above 80 % of its tier, so the user
- * sees the overrun before Odds API starts 429-ing on a Saturday noon.
- *
- * Tier limits come from `src/lib/config/api-budget.ts` — the same module the
- * runtime rate limiter uses — so raising a paid-tier env var lifts both
- * together. Keep cadences here in sync with `docs/api-budget.md` and
- * `vercel.json`.
+ * Projects monthly upstream call volume and exits non-zero if any API is
+ * projected above 80 % of its tier. Tier limits come from
+ * `src/lib/config/api-budget.ts` and cadences from
+ * `src/lib/config/api-cadence.ts` — both modules are the single source of
+ * truth, imported by the runtime rate limiter too, so a paid-tier env var
+ * or a new sport key added to SPORT_CONFIGS propagates to all three.
  */
 
 import { apiBudget } from "@/lib/config/api-budget";
+import {
+  apiCadence,
+  apiFootballPerDay,
+  oddsApiPerDay,
+} from "@/lib/config/api-cadence";
 
 interface ApiBudgetRow {
   name: string;
@@ -23,29 +26,28 @@ interface ApiBudgetRow {
   description: string;
 }
 
+const oddsApiProjection = oddsApiPerDay(apiCadence.oddsApi);
+const apiFootballProjection = apiFootballPerDay(apiCadence.apiFootball);
+
 const budgets: ApiBudgetRow[] = [
   {
     name: "The Odds API",
     monthlyLimit: apiBudget.oddsApi.monthlyLimit,
-    // fixtures cron every 2d × 2 sports = 1/day avg
-    // odds cron every 4h × 2 sports = 12/day
-    // settlement / closing line captures ≈ 1/day
-    projectedPerDay: 1 + 12 + 1,
-    description: "fixtures cron + odds cron + settlement",
+    projectedPerDay: oddsApiProjection,
+    description:
+      `${apiCadence.oddsApi.sportKeyCount} sport keys × odds cron (every ` +
+      `${24 / apiCadence.oddsApi.oddsCron.perDay}h) + fixtures cron + settlement`,
   },
   {
     name: "API-Football",
     monthlyLimit: apiBudget.apiFootball.monthlyLimit,
-    // 4 leagues × 1 fixtures call every 2d = 2/day
-    // team stats cached 7d, ~10/week = 1.4/day
-    // H2H only for high-liquidity events, ~0.7/day
-    projectedPerDay: 2 + 1.4 + 0.7,
+    projectedPerDay: apiFootballProjection,
     description: "fixtures + team stats (7d cache) + H2H",
   },
   {
     name: "CricketData",
     monthlyLimit: apiBudget.cricketData.monthlyLimit,
-    projectedPerDay: 4,
+    projectedPerDay: apiCadence.cricketData.perDay,
     description: "matches + series + team form lookups",
   },
 ];
@@ -72,9 +74,9 @@ for (const b of budgets) {
 if (hasOverrun) {
   console.error(
     "\n✗ At least one API is projected above 80 % of its tier.\n" +
-      "  Either tighten the cadence, upgrade the tier, or set the matching\n" +
-      "  *_MONTHLY_LIMIT env var to reflect the paid tier you're on.\n" +
-      "  See docs/api-budget.md for the full breakdown."
+      "  Either tighten the cadence, drop a sport key from SPORT_CONFIGS,\n" +
+      "  upgrade the tier, or set the matching *_MONTHLY_LIMIT env var to\n" +
+      "  reflect the paid tier you're on. See docs/api-budget.md."
   );
   process.exit(1);
 }
