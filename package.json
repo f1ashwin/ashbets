@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "check:budget": "tsx scripts/check-api-budget.ts",
-    "seed:teams": "tsx scripts/seed-teams.ts"
+    "check:env": "node --env-file=.env.local --import tsx scripts/verify-env.ts",
+    "seed:teams": "node --env-file=.env.local --import tsx scripts/seed-teams.ts",
+    "db:migrate": "node --env-file=.env.local --import tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
