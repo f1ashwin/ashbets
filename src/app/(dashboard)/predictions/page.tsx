@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { getRenderedSignals } from "@/lib/predictions/signals";
 import { formatOdds, formatPercent } from "@/lib/utils/formatters";
 import { TierBadge } from "@/components/predictions/tier-badge";
@@ -21,6 +22,7 @@ export default function PredictionsPage() {
 }
 
 async function Board() {
+  await connection();
   const signals = await getRenderedSignals();
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { getRenderedSignals } from "@/lib/predictions/signals";
 import { buildLadders, type ComboCandidate } from "@/lib/predictions/combo";
 import { currentBalance } from "@/lib/db/queries/bankroll";
@@ -27,6 +28,10 @@ export default function Overview() {
 }
 
 async function TopStripCell() {
+  // Opt this branch into dynamic rendering before we touch `new Date()` in
+  // the uncached queries — Cache Components would otherwise refuse to
+  // evaluate clock-dependent code during prerender.
+  await connection();
   const [bankroll, spend] = await Promise.all([currentBalance(), todaysSpend()]);
   return (
     <TopStrip
@@ -40,6 +45,7 @@ async function TopStripCell() {
 }
 
 async function SignalsBoard() {
+  await connection();
   const [signals, bankroll, spend] = await Promise.all([
     getRenderedSignals(),
     currentBalance(),

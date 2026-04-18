@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { connection } from "next/server";
 import { getRenderedSignals } from "@/lib/predictions/signals";
 import { currentBalance } from "@/lib/db/queries/bankroll";
 import { todaysSpend } from "@/lib/db/queries/bets";
@@ -22,6 +23,7 @@ export default function FootballPage() {
 }
 
 async function FootballBoard() {
+  await connection();
   const [signals, bankroll, spend] = await Promise.all([
     getRenderedSignals("football"),
     currentBalance(),
