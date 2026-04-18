@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:budget": "tsx scripts/check-api-budget.ts",
+    "check:env": "node --env-file=.env.local --import tsx scripts/verify-env.ts",
+    "seed:teams": "node --env-file=.env.local --import tsx scripts/seed-teams.ts",
+    "db:migrate": "node --env-file=.env.local --import tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
@@ -36,6 +40,7 @@
     "eslint-config-next": "16.2.3",
     "jsdom": "^29.0.2",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5",
     "vitest": "^4.1.4"
   }

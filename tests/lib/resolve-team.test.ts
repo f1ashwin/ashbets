@@ -6,11 +6,19 @@ import {
 } from "@/lib/ingest/resolve-team";
 
 /**
- * These tests verify that the fuzzy team-name matcher has sane separation
- * between real matches and easy false positives. The 0.92 auto-accept and
- * 0.8 suggest thresholds in resolve-team.ts rely on this separation. If a
- * threshold needs to change, adjust a threshold and add a test row here.
+ * These tests pin the fuzzy matcher's behavior at the two decision points
+ * the resolver cares about:
+ *
+ *   AUTO_ACCEPT = 0.92 — score ≥ this, alias is created silently
+ *   SUGGEST     = 0.80 — score ≥ this, row lands in pending_aliases with a hint
+ *
+ * The two describe blocks below assert those thresholds strictly. A pair
+ * that the resolver must merge automatically goes in the auto-accept group
+ * (≥0.92). A pair that is merely "close enough to propose to a human" goes
+ * in the suggest group (≥0.80 and <0.92). Don't loosen either bound without
+ * re-examining the thresholds themselves.
  */
+
 describe("normaliseTeamName", () => {
   it("lowercases, strips punctuation and diacritics", () => {
     expect(normaliseTeamName("F.C. Köln")).toBe("f c koln");
@@ -23,31 +31,53 @@ describe("normaliseTeamName", () => {
   });
 });
 
-describe("teamNameScore — true positives (want ≥0.92 auto-accept)", () => {
+describe("teamNameScore — must auto-accept (≥0.92)", () => {
+  // These pairs collapse to an identical expansion (abbrev or admin-token
+  // stripping or diacritic normalisation), so the resolver MUST auto-merge.
+  // A regression in any of these would flood pending_aliases with obvious
+  // duplicates a human shouldn't have to triage.
   const pairs: Array<[string, string]> = [
-    ["Manchester United", "Manchester Utd"],
-    ["Manchester United", "Man United"],
-    ["Manchester United", "Man Utd"],
-    ["Bayern München", "Bayern Munich"],
-    ["FC Barcelona", "Barcelona"],
-    ["Tottenham Hotspur", "Tottenham"],
-    ["Wolverhampton Wanderers", "Wolves"],
-    ["Brighton & Hove Albion", "Brighton"],
-    ["Atlético Madrid", "Atletico Madrid"],
+    ["Manchester United", "Manchester Utd"], // "utd" → "united"
+    ["FC Barcelona", "Barcelona"], // "fc" admin-stripped
+    ["Atlético Madrid", "Atletico Madrid"], // diacritic strip
+    ["Bayern München", "Bayern Munchen"], // diacritic strip
+    ["Real Madrid CF", "Real Madrid"], // "cf" admin-stripped
   ];
 
   for (const [a, b] of pairs) {
-    it(`"${a}" ↔ "${b}" should match strongly`, () => {
-      expect(teamNameScore(a, b)).toBeGreaterThanOrEqual(0.8);
+    it(`"${a}" ↔ "${b}" must auto-accept`, () => {
+      expect(teamNameScore(a, b)).toBeGreaterThanOrEqual(0.92);
     });
   }
 });
 
-// The critical guarantee is that distinct teams never auto-merge (score must
-// stay below the 0.92 AUTO_ACCEPT threshold). Some of these pairs legitimately
-// produce *suggestions* (score in [0.8, 0.92)) — that's fine because a human
-// rejects the suggestion in 3 seconds and we'd rather over-suggest than miss
-// a real typo.
+describe("teamNameScore — must at least suggest (0.80 ≤ score < 0.92)", () => {
+  // Nickname and long-name-vs-short-name pairs the resolver cannot safely
+  // auto-merge (score < 0.92), but which should still reach a human via
+  // pending_aliases (score ≥ 0.80). If any of these regressed below 0.80
+  // the reviewer would never see the suggestion and would create a duplicate
+  // canonical team row.
+  const pairs: Array<[string, string]> = [
+    ["Manchester United", "Man United"],
+    ["Manchester United", "Man Utd"],
+    ["Tottenham Hotspur", "Tottenham"],
+    ["Wolverhampton Wanderers", "Wolves"],
+    ["Brighton & Hove Albion", "Brighton"],
+    ["Bayern München", "Bayern Munich"], // "munich" not in ABBREVIATIONS
+  ];
+
+  for (const [a, b] of pairs) {
+    it(`"${a}" ↔ "${b}" must be at least a suggestion`, () => {
+      const score = teamNameScore(a, b);
+      expect(score).toBeGreaterThanOrEqual(0.8);
+      // Not a hard upper bound — if a pair legitimately climbs to ≥0.92
+      // (say after we add a new abbreviation), that's fine. We assert the
+      // lower bound only.
+    });
+  }
+});
+
+// The critical guarantee is that distinct teams never auto-merge.
 describe("teamNameScore — true negatives (must stay below AUTO_ACCEPT 0.92)", () => {
   const pairs: Array<[string, string]> = [
     ["Manchester United", "Manchester City"],
@@ -65,8 +95,6 @@ describe("teamNameScore — true negatives (must stay below AUTO_ACCEPT 0.92)", 
   }
 });
 
-// Harder negatives we *also* want to keep below the suggestion threshold,
-// because the names share no meaningful overlap.
 describe("teamNameScore — clear negatives (want <0.8 no suggestion)", () => {
   const pairs: Array<[string, string]> = [
     ["Arsenal", "Aston Villa"],
