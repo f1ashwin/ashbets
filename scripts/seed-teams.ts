@@ -70,7 +70,21 @@ const WORLD_CUP_TEAMS: TeamSeed[] = [
   { name: "Norway", country: "Norway", rating: 1350 },
   { name: "Austria", country: "Austria", rating: 1350 },
   { name: "Hungary", country: "Hungary", rating: 1350 },
-  { name: "Czech Republic", country: "Czech Republic", rating: 1350 }
+  { name: "Czech Republic", country: "Czech Republic", rating: 1350 },
+
+  // Confirmed WC 2026 qualifiers added after first ingest (unresolved from Odds API)
+  { name: "South Africa", country: "South Africa", rating: 1350 },
+  { name: "Bosnia & Herzegovina", country: "Bosnia & Herzegovina", rating: 1450 },
+  { name: "Paraguay", country: "Paraguay", rating: 1450 },
+  { name: "Haiti", country: "Haiti", rating: 1300 },
+  { name: "Curaçao", country: "Curaçao", rating: 1280 },
+  { name: "Cape Verde", country: "Cape Verde", rating: 1350 },
+  { name: "New Zealand", country: "New Zealand", rating: 1320 },
+  { name: "Iraq", country: "Iraq", rating: 1420 },
+  { name: "Jordan", country: "Jordan", rating: 1380 },
+  { name: "DR Congo", country: "DR Congo", rating: 1380 },
+  { name: "Uzbekistan", country: "Uzbekistan", rating: 1380 },
+  { name: "Panama", country: "Panama", rating: 1400 },
 ];
 
 async function seed() {
