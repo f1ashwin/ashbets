@@ -1,13 +1,15 @@
 /**
- * World Cup 2026 team and Elo seeding.
- * Seeds the 48 nations participating in the World Cup with their initial rating values.
+ * World Cup 2026 team, Elo, and alias seeding.
+ * Seeds the 48 nations participating in the World Cup with their initial rating values,
+ * and sets up aliases to handle spelling differences from upstream sources.
  *
  * Usage:
  *   $ DATABASE_URL=postgres://… npx tsx scripts/seed-teams.ts
  */
 
 import { db } from "@/lib/db";
-import { teams, eloRatings } from "@/lib/db/schema";
+import { teams, eloRatings, teamAliases } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
 
 interface TeamSeed {
   name: string;
@@ -70,27 +72,22 @@ const WORLD_CUP_TEAMS: TeamSeed[] = [
   { name: "Norway", country: "Norway", rating: 1350 },
   { name: "Austria", country: "Austria", rating: 1350 },
   { name: "Hungary", country: "Hungary", rating: 1350 },
-  { name: "Czech Republic", country: "Czech Republic", rating: 1350 },
-
-  // Confirmed WC 2026 qualifiers added after first ingest (unresolved from Odds API)
-  { name: "South Africa", country: "South Africa", rating: 1350 },
-  { name: "Bosnia & Herzegovina", country: "Bosnia & Herzegovina", rating: 1450 },
-  { name: "Paraguay", country: "Paraguay", rating: 1450 },
-  { name: "Haiti", country: "Haiti", rating: 1300 },
-  { name: "Curaçao", country: "Curaçao", rating: 1280 },
-  { name: "Cape Verde", country: "Cape Verde", rating: 1350 },
-  { name: "New Zealand", country: "New Zealand", rating: 1320 },
-  { name: "Iraq", country: "Iraq", rating: 1420 },
-  { name: "Jordan", country: "Jordan", rating: 1380 },
-  { name: "DR Congo", country: "DR Congo", rating: 1380 },
-  { name: "Uzbekistan", country: "Uzbekistan", rating: 1380 },
-  { name: "Panama", country: "Panama", rating: 1400 },
+  { name: "Czech Republic", country: "Czech Republic", rating: 1350 }
 ];
 
+// Common name variations returned by The Odds API and other sources
+const COMMON_ALIASES: Record<string, string[]> = {
+  "USA": ["United States", "US", "USA"],
+  "South Korea": ["Korea Republic", "Korea", "South Korea"],
+  "Ivory Coast": ["Côte d'Ivoire", "Cote d'Ivoire", "Ivory Coast"],
+  "Czech Republic": ["Czechia", "Czech Republic"],
+};
+
 async function seed() {
-  console.log("Seeding World Cup 2026 teams and Elo ratings...");
+  console.log("Seeding World Cup 2026 teams, Elo ratings, and aliases...");
   let teamsInserted = 0;
   let eloInserted = 0;
+  let aliasesInserted = 0;
 
   for (const t of WORLD_CUP_TEAMS) {
     // 1. Insert team
@@ -105,6 +102,22 @@ async function seed() {
       .returning({ id: teams.id });
     
     if (res[0]) teamsInserted++;
+
+    // Get the team ID (either newly inserted or existing)
+    let teamId = res[0]?.id;
+    if (!teamId) {
+      const existing = await db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(eq(teams.sport, "football"), eq(teams.canonicalName, t.name)))
+        .limit(1);
+      teamId = existing[0]?.id;
+    }
+
+    if (!teamId) {
+      console.error(`Failed to resolve ID for team ${t.name}`);
+      continue;
+    }
 
     // 2. Insert/update Elo rating
     await db
@@ -125,9 +138,29 @@ async function seed() {
         }
       });
     eloInserted++;
+
+    // 3. Seed team name aliases
+    // Add the canonical name as an alias first (exact lookup fast-path)
+    const aliases = COMMON_ALIASES[t.name] || [t.name];
+    if (!aliases.includes(t.name)) {
+      aliases.push(t.name);
+    }
+
+    for (const alias of aliases) {
+      await db
+        .insert(teamAliases)
+        .values({
+          teamId,
+          sport: "football",
+          source: "odds-api",
+          externalName: alias,
+        })
+        .onConflictDoNothing();
+      aliasesInserted++;
+    }
   }
 
-  console.log(`\n✓ Seed complete. Inserted ${teamsInserted} new teams, seeded ${eloInserted} Elo ratings.`);
+  console.log(`\n✓ Seed complete. Inserted ${teamsInserted} new teams, seeded ${eloInserted} Elo ratings, and registered ${aliasesInserted} aliases.`);
 }
 
 seed()
