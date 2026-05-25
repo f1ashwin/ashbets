@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { events, predictions, eloRatings, oddsHistory } from "@/lib/db/schema";
-import { resolveTeam } from "@/lib/ingest/resolve-team";
 import { matchProbabilities } from "@/lib/predictions/elo";
 import { evaluateValue } from "@/lib/predictions/value-calculator";
 import { ingestOddsApi } from "@/lib/ingest/odds-api";
+
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   return handleCron(request);
@@ -41,7 +42,7 @@ async function handleCron(request: Request) {
     errors.push(`Ingestion error: ${err.message}`);
   }
 
-  // 3. Generate predictions for upcoming matches
+  // 3. Generate predictions for upcoming matches — batched to avoid N×6 round trips
   let predictionsCreated = 0;
   try {
     const upcomingEvents = await db
@@ -49,119 +50,81 @@ async function handleCron(request: Request) {
       .from(events)
       .where(eq(events.status, "upcoming"));
 
-    for (const event of upcomingEvents) {
-      // Resolve teams canonically
-      const homeRes = await resolveTeam({
-        sport: "football",
-        source: "odds-api",
-        externalName: event.homeTeam,
-      });
-      const awayRes = await resolveTeam({
-        sport: "football",
-        source: "odds-api",
-        externalName: event.awayTeam,
-      });
+    if (upcomingEvents.length > 0) {
+      const eventIds = upcomingEvents.map((e) => e.id);
 
-      if (homeRes.status !== "matched" || awayRes.status !== "matched") {
-        console.warn(`Unresolved teams for event ${event.id}: home=${event.homeTeam}, away=${event.awayTeam}`);
-        continue;
-      }
+      // Collect all team names appearing in upcoming events
+      const allTeamNames = [...new Set(upcomingEvents.flatMap((e) => [e.homeTeam, e.awayTeam]))];
 
-      const homeCanonical = homeRes.canonicalName;
-      const awayCanonical = awayRes.canonicalName;
-
-      // Fetch current Elo ratings
-      const homeEloRow = await db
-        .select({ rating: eloRatings.rating })
+      // Batch-fetch all Elo ratings for those teams in one query
+      const eloRows = await db
+        .select({ entity: eloRatings.entity, rating: eloRatings.rating })
         .from(eloRatings)
-        .where(and(eq(eloRatings.entity, homeCanonical), eq(eloRatings.sport, "football")))
-        .limit(1);
-      const awayEloRow = await db
-        .select({ rating: eloRatings.rating })
-        .from(eloRatings)
-        .where(and(eq(eloRatings.entity, awayCanonical), eq(eloRatings.sport, "football")))
-        .limit(1);
+        .where(and(inArray(eloRatings.entity, allTeamNames), eq(eloRatings.sport, "football")));
+      const eloMap = Object.fromEntries(eloRows.map((r) => [r.entity, Number(r.rating)]));
 
-      const homeElo = homeEloRow[0] ? Number(homeEloRow[0].rating) : 1500;
-      const awayElo = awayEloRow[0] ? Number(awayEloRow[0].rating) : 1500;
-
-      // World Cup matches are played on neutral ground, so isNeutral = true
-      const probabilities = matchProbabilities(homeElo, awayElo, "football", true);
-
-      // Fetch fresh, uncached latest odds for the event
-      const oddsRows = await db
+      // Batch-fetch all latest odds for all upcoming events in one query
+      const allOddsRows = await db
         .select({
+          eventId: oddsHistory.eventId,
           bookmaker: oddsHistory.bookmaker,
           market: oddsHistory.market,
           outcome: oddsHistory.outcome,
           odds: oddsHistory.odds,
+          recordedAt: oddsHistory.recordedAt,
         })
         .from(oddsHistory)
-        .where(eq(oddsHistory.eventId, event.id))
+        .where(inArray(oddsHistory.eventId, eventIds))
         .orderBy(desc(oddsHistory.recordedAt));
 
-      // Extract unique latest lines
-      const seenLines = new Set<string>();
-      const latestOdds: Array<{ bookmaker: string; market: string; outcome: string; odds: number }> = [];
-      for (const row of oddsRows) {
+      // Group odds by eventId, keeping only the latest line per bookmaker+market+outcome
+      const oddsByEvent: Record<string, Array<{ bookmaker: string; market: string; outcome: string; odds: number }>> = {};
+      const seenByEvent: Record<string, Set<string>> = {};
+      for (const row of allOddsRows) {
+        const eid = row.eventId!;
+        if (!oddsByEvent[eid]) { oddsByEvent[eid] = []; seenByEvent[eid] = new Set(); }
         const key = `${row.bookmaker}:${row.market}:${row.outcome}`;
-        if (seenLines.has(key)) continue;
-        seenLines.add(key);
-        latestOdds.push({
-          bookmaker: row.bookmaker,
-          market: row.market,
-          outcome: row.outcome,
-          odds: Number(row.odds),
-        });
+        if (seenByEvent[eid].has(key)) continue;
+        seenByEvent[eid].add(key);
+        oddsByEvent[eid].push({ bookmaker: row.bookmaker, market: row.market, outcome: row.outcome, odds: Number(row.odds) });
       }
 
-      // Calculate best value outcome
-      let bestValue: any = null;
-      let bestEdge = 0;
+      // Compute predictions in memory, then batch-upsert
+      const newPredictions: Array<{ eventId: string; model: string; modelVersion: string; probabilities: any; bestValue: any }> = [];
 
-      for (const line of latestOdds) {
-        let modelProb = 0;
-        if (line.market === "h2h") {
-          modelProb = probabilities[line.outcome] ?? 0;
-        } else if (line.market === "totals") {
-          if (line.outcome === "over") modelProb = probabilities.over25 ?? 0;
-          else if (line.outcome === "under") modelProb = probabilities.under25 ?? 0;
+      for (const event of upcomingEvents) {
+        const homeElo = eloMap[event.homeTeam] ?? 1500;
+        const awayElo = eloMap[event.awayTeam] ?? 1500;
+        const probabilities = matchProbabilities(homeElo, awayElo, "football", true);
+        const latestOdds = oddsByEvent[event.id] ?? [];
+
+        let bestValue: any = null;
+        let bestEdge = 0;
+        for (const line of latestOdds) {
+          let modelProb = 0;
+          if (line.market === "h2h") modelProb = (probabilities as any)[line.outcome] ?? 0;
+          else if (line.market === "totals") {
+            if (line.outcome === "over") modelProb = (probabilities as any).over25 ?? 0;
+            else if (line.outcome === "under") modelProb = (probabilities as any).under25 ?? 0;
+          }
+          const signal = evaluateValue(modelProb, line.odds, line.bookmaker, line.outcome);
+          if (signal.isValue && signal.edge > bestEdge) {
+            bestEdge = signal.edge;
+            bestValue = { outcome: line.outcome, bookmaker: line.bookmaker, odds: line.odds, edge: signal.edge, ev: signal.ev };
+          }
         }
 
-        const signal = evaluateValue(modelProb, line.odds, line.bookmaker, line.outcome);
-        if (signal.isValue && signal.edge > bestEdge) {
-          bestEdge = signal.edge;
-          bestValue = {
-            outcome: line.outcome,
-            bookmaker: line.bookmaker,
-            odds: line.odds,
-            edge: signal.edge,
-            ev: signal.ev,
-          };
-        }
+        newPredictions.push({ eventId: event.id, model: "elo", modelVersion: "wc2026-v1", probabilities, bestValue: bestValue ?? null });
       }
 
-      // Delete existing prediction record for this model & modelVersion
-      await db
-        .delete(predictions)
-        .where(
-          and(
-            eq(predictions.eventId, event.id),
-            eq(predictions.model, "elo"),
-            eq(predictions.modelVersion, "wc2026-v1")
-          )
+      // Batch delete old + batch insert new (two queries total regardless of event count)
+      if (newPredictions.length > 0) {
+        await db.delete(predictions).where(
+          and(inArray(predictions.eventId, eventIds), eq(predictions.model, "elo"), eq(predictions.modelVersion, "wc2026-v1"))
         );
-
-      // Insert new prediction
-      await db.insert(predictions).values({
-        eventId: event.id,
-        model: "elo",
-        modelVersion: "wc2026-v1",
-        probabilities,
-        bestValue: bestValue ?? null,
-      });
-
-      predictionsCreated++;
+        await db.insert(predictions).values(newPredictions);
+        predictionsCreated = newPredictions.length;
+      }
     }
   } catch (err: any) {
     errors.push(`Predictions generation error: ${err.message}`);
