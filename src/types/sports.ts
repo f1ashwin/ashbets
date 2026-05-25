@@ -21,6 +21,7 @@ export interface SportConfig {
   key: Sport;
   label: string;
   oddsApiKeys: string[];
+  markets: Market[];
   icon: string;
   color: string;
   defaultLeagues?: number[];
@@ -30,14 +31,8 @@ export const SPORT_CONFIGS: Record<Sport, SportConfig> = {
   football: {
     key: "football",
     label: "Football",
-    oddsApiKeys: [
-      "soccer_epl",
-      "soccer_uefa_champions_league",
-      "soccer_germany_bundesliga",
-      "soccer_spain_la_liga",
-      "soccer_italy_serie_a",
-      "soccer_france_ligue_one",
-    ],
+    oddsApiKeys: ["soccer_fifa_world_cup"],
+    markets: ["h2h", "totals"],
     icon: "circle-dot",
     color: "emerald",
     defaultLeagues: [39, 2, 3, 78, 135, 140, 61],
@@ -46,6 +41,7 @@ export const SPORT_CONFIGS: Record<Sport, SportConfig> = {
     key: "cricket",
     label: "Cricket",
     oddsApiKeys: [],
+    markets: ["h2h"],
     icon: "trophy",
     color: "blue",
   },

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: "📊" },
+  { href: "/worldcup", label: "World Cup 🏆", icon: "🏆" },
   { href: "/football", label: "Football", icon: "⚽" },
   { href: "/cricket", label: "Cricket", icon: "🏏" },
   { href: "/predictions", label: "Value Bets", icon: "🎯" },

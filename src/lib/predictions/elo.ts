@@ -75,36 +75,57 @@ export function probabilityToOdds(probability: number): number {
 }
 
 /**
+ * Calculate expected goals for home and away teams based on Elo ratings.
+ */
+export function expectedGoals(
+  ratingHome: number,
+  ratingAway: number,
+  homeAdvantage = 0
+): { home: number; away: number } {
+  const ratingDiff = (ratingHome + homeAdvantage) - ratingAway;
+  const baseRate = 1.3;
+  const homeXg = baseRate * Math.exp(ratingDiff / 400);
+  const awayXg = baseRate * Math.exp(-ratingDiff / 400);
+  return { home: homeXg, away: awayXg };
+}
+
+/**
  * Generate match probabilities from Elo ratings.
- * For football (3-way): uses historical draw rate to split.
+ * For football (3-way): uses historical draw rate to split, and calculates Under/Over 2.5 totals.
  * For cricket (2-way): direct probability.
  */
 export function matchProbabilities(
   ratingHome: number,
   ratingAway: number,
-  sport: string
+  sport: string,
+  isNeutral = false
 ): Record<string, number> {
-  const homeWinProb = expectedProbability(
-    ratingHome,
-    ratingAway,
-    sport === "football" ? HOME_ADVANTAGE : 0
-  );
+  const homeAdv = (sport === "football" && !isNeutral) ? HOME_ADVANTAGE : 0;
+  const homeWinProb = expectedProbability(ratingHome, ratingAway, homeAdv);
 
   if (sport === "football") {
     // Approximate draw probability based on how close the match is
     // Draws are more likely when teams are evenly matched
     const drawBase = 0.25;
-    const eloDiff = Math.abs(ratingHome - ratingAway);
+    const eloDiff = Math.abs((ratingHome + homeAdv) - ratingAway);
     const drawAdjust = Math.max(0, drawBase - eloDiff / 2000);
     const drawProb = drawAdjust;
 
     const adjustedHome = homeWinProb * (1 - drawProb);
     const adjustedAway = (1 - homeWinProb) * (1 - drawProb);
 
+    // Totals market: Over/Under 2.5 goals using Poisson approximation
+    const xG = expectedGoals(ratingHome, ratingAway, homeAdv);
+    const lambda = xG.home + xG.away;
+    const probUnder25 = Math.exp(-lambda) * (1 + lambda + (lambda * lambda) / 2);
+    const probOver25 = 1 - probUnder25;
+
     return {
       home: Math.round(adjustedHome * 1000) / 1000,
       draw: Math.round(drawProb * 1000) / 1000,
       away: Math.round(adjustedAway * 1000) / 1000,
+      over25: Math.round(probOver25 * 1000) / 1000,
+      under25: Math.round(probUnder25 * 1000) / 1000,
     };
   }
 
