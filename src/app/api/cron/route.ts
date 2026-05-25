@@ -54,14 +54,17 @@ async function handleCron(request: Request) {
       const eventIds = upcomingEvents.map((e) => e.id);
 
       // Collect all team names appearing in upcoming events
-      const allTeamNames = [...new Set(upcomingEvents.flatMap((e) => [e.homeTeam, e.awayTeam]))];
+      const allTeamNames = [...new Set(upcomingEvents.flatMap((e) => [e.homeTeam, e.awayTeam]))].filter(Boolean);
 
-      // Batch-fetch all Elo ratings for those teams in one query
-      const eloRows = await db
-        .select({ entity: eloRatings.entity, rating: eloRatings.rating })
-        .from(eloRatings)
-        .where(and(inArray(eloRatings.entity, allTeamNames), eq(eloRatings.sport, "football")));
-      const eloMap = Object.fromEntries(eloRows.map((r) => [r.entity, Number(r.rating)]));
+      let eloMap: Record<string, number> = {};
+      if (allTeamNames.length > 0) {
+        // Batch-fetch all Elo ratings for those teams in one query
+        const eloRows = await db
+          .select({ entity: eloRatings.entity, rating: eloRatings.rating })
+          .from(eloRatings)
+          .where(and(inArray(eloRatings.entity, allTeamNames), eq(eloRatings.sport, "football")));
+        eloMap = Object.fromEntries(eloRows.map((r) => [r.entity, Number(r.rating)]));
+      }
 
       // Batch-fetch all latest odds for all upcoming events in one query
       const allOddsRows = await db

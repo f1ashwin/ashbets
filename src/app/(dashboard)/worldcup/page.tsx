@@ -60,7 +60,9 @@ async function MatchSchedule() {
     currentBalance(),
     todaysSpend(),
   ]);
-  const dailyRemaining = Math.max(0, limits.maxDailyStakeEur - spend.real);
+
+  const now = new Date();
+  const todayStr = format(now, "yyyy-MM-dd");
 
   // Fetch upcoming football events
   const upcoming = await db
@@ -85,31 +87,38 @@ async function MatchSchedule() {
   // Group events by Match Day
   const grouped = upcoming.reduce((acc, event) => {
     const date = new Date(event.startTime);
-    const dayStr = format(date, "EEEE, MMMM d, yyyy");
-    if (!acc[dayStr]) acc[dayStr] = [];
-    acc[dayStr].push(event);
+    const dayKey = format(date, "yyyy-MM-dd");
+    if (!acc[dayKey]) acc[dayKey] = { label: format(date, "EEEE, MMMM d, yyyy"), events: [] };
+    acc[dayKey].events.push(event);
     return acc;
-  }, {} as Record<string, typeof upcoming>);
+  }, {} as Record<string, { label: string; events: typeof upcoming }>);
 
   return (
     <div className="flex flex-col gap-6">
-      {Object.entries(grouped).map(([dayLabel, dayEvents]) => (
-        <section key={dayLabel} className="flex flex-col gap-4">
-          <h2 className="text-lg font-bold border-b border-gray-200 pb-1 text-gray-800 dark:border-gray-800 dark:text-gray-200">
-            {dayLabel}
-          </h2>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            {dayEvents.map((event) => (
-              <MatchCard
-                key={event.id}
-                event={event}
-                bankroll={bankroll}
-                dailyRemaining={dailyRemaining}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      {Object.entries(grouped).map(([dayKey, group]) => {
+        // Budget logic: if it's today, use dailyRemaining, otherwise full limit
+        const isToday = dayKey === todayStr;
+        const totalBudgetForDay = isToday ? Math.max(0, limits.maxDailyStakeEur - spend.real) : limits.maxDailyStakeEur;
+        const budgetPerMatch = group.events.length > 0 ? totalBudgetForDay / group.events.length : 0;
+
+        return (
+          <section key={dayKey} className="flex flex-col gap-4">
+            <h2 className="text-lg font-bold border-b border-gray-200 pb-1 text-gray-800 dark:border-gray-800 dark:text-gray-200">
+              {group.label} {isToday && <span className="ml-2 text-xs font-normal text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full dark:bg-emerald-900/30 dark:text-emerald-400">Today</span>}
+            </h2>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {group.events.map((event) => (
+                <MatchCard
+                  key={event.id}
+                  event={event}
+                  bankroll={bankroll}
+                  dailyRemaining={budgetPerMatch}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -123,7 +132,7 @@ async function MatchCard({
   bankroll: number;
   dailyRemaining: number;
 }) {
-  const recommendations = await getTopTwoBets(event.id);
+  const recommendations = await getTopTwoBets(event.id, dailyRemaining);
   const timeStr = format(new Date(event.startTime), "HH:mm");
 
   return (

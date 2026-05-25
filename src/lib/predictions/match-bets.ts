@@ -20,7 +20,7 @@ export interface MatchBet {
  * Identify up to two value bets (1 in H2H and 1 in Totals Over/Under 2.5) for a World Cup match.
  * Filters out bets below the minimum edge threshold (default 2%) and caps stakes per bet at limits.maxDailyStakeEur / 4.
  */
-export async function getTopTwoBets(eventId: string): Promise<MatchBet[]> {
+export async function getTopTwoBets(eventId: string, dailyRemaining: number): Promise<MatchBet[]> {
   // 1. Fetch the latest Elo prediction for this event
   const predRows = await db
     .select()
@@ -96,7 +96,8 @@ export async function getTopTwoBets(eventId: string): Promise<MatchBet[]> {
   }
 
   const bankroll = await currentBalance();
-  const cap = limits.maxDailyStakeEur / 4; // €2.50 cap per bet
+  const absoluteCap = limits.maxDailyStakeEur / 4; // €2.50 absolute cap per bet
+  let currentDailyRemaining = dailyRemaining;
 
   const matchBets: MatchBet[] = [];
 
@@ -105,7 +106,7 @@ export async function getTopTwoBets(eventId: string): Promise<MatchBet[]> {
     const stakeResult = recommendedStake(bestH2h.kellyFraction, bankroll, {
       softCap: limits.softCap,
       hardCap: limits.hardCap,
-      maxBetCurrency: cap,
+      maxBetCurrency: Math.min(absoluteCap, currentDailyRemaining),
     });
 
     let selectionLabel = "";
@@ -113,16 +114,22 @@ export async function getTopTwoBets(eventId: string): Promise<MatchBet[]> {
     else if (bestH2h.outcome === "away") selectionLabel = event.awayTeam;
     else selectionLabel = "Draw";
 
-    matchBets.push({
-      market: "h2h",
-      selection: bestH2h.outcome,
-      selectionLabel,
-      bookmaker: bestH2h.bookmaker,
-      odds: bestH2h.odds,
-      edge: bestH2h.edge,
-      stake: Math.round(stakeResult.stake * 100) / 100,
-      modelProbability: bestH2h.modelProbability,
-    });
+    const stake = Math.round(stakeResult.stake * 100) / 100;
+    
+    // Only recommend if stake is > 0
+    if (stake > 0) {
+      matchBets.push({
+        market: "h2h",
+        selection: bestH2h.outcome,
+        selectionLabel,
+        bookmaker: bestH2h.bookmaker,
+        odds: bestH2h.odds,
+        edge: bestH2h.edge,
+        stake,
+        modelProbability: bestH2h.modelProbability,
+      });
+      currentDailyRemaining -= stake;
+    }
   }
 
   // 7. Calculate sizing and build output for Totals recommended bet
@@ -130,21 +137,25 @@ export async function getTopTwoBets(eventId: string): Promise<MatchBet[]> {
     const stakeResult = recommendedStake(bestTotals.kellyFraction, bankroll, {
       softCap: limits.softCap,
       hardCap: limits.hardCap,
-      maxBetCurrency: cap,
+      maxBetCurrency: Math.min(absoluteCap, currentDailyRemaining),
     });
 
     const selectionLabel = bestTotals.outcome === "over" ? "Over 2.5 Goals" : "Under 2.5 Goals";
+    const stake = Math.round(stakeResult.stake * 100) / 100;
 
-    matchBets.push({
-      market: "totals",
-      selection: bestTotals.outcome,
-      selectionLabel,
-      bookmaker: bestTotals.bookmaker,
-      odds: bestTotals.odds,
-      edge: bestTotals.edge,
-      stake: Math.round(stakeResult.stake * 100) / 100,
-      modelProbability: bestTotals.modelProbability,
-    });
+    if (stake > 0) {
+      matchBets.push({
+        market: "totals",
+        selection: bestTotals.outcome,
+        selectionLabel,
+        bookmaker: bestTotals.bookmaker,
+        odds: bestTotals.odds,
+        edge: bestTotals.edge,
+        stake,
+        modelProbability: bestTotals.modelProbability,
+      });
+      currentDailyRemaining -= stake;
+    }
   }
 
   return matchBets;
