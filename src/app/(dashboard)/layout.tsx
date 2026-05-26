@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireUser } from "@/lib/auth/get-user";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: "📊" },
@@ -12,11 +13,13 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const user = await requireUser();
+
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
@@ -37,9 +40,24 @@ export default function DashboardLayout({
             </Link>
           ))}
         </nav>
-        <div className="p-4 border-t border-gray-200 dark:border-gray-800 text-xs text-gray-500">
-          <div>Max per bet: €10</div>
-          <div>Strategy: Value betting + CLV</div>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800 space-y-3">
+          <div className="text-xs text-gray-500">
+            <div>Max per bet: €10</div>
+            <div>Strategy: Value betting + CLV</div>
+          </div>
+          <div className="pt-3 border-t border-gray-200 dark:border-gray-800 space-y-2">
+            <div className="text-xs text-gray-500 truncate" title={user.email ?? ""}>
+              {user.email}
+            </div>
+            <form action="/auth/sign-out" method="post">
+              <button
+                type="submit"
+                className="w-full text-left text-xs text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+              >
+                Sign out
+              </button>
+            </form>
+          </div>
         </div>
       </aside>
 
