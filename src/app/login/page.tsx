@@ -1,11 +1,10 @@
-import LoginButton from "./LoginButton";
+import { signInAction } from "./actions";
 
 type SearchParams = Promise<{ error?: string }>;
 
 const ERROR_MESSAGES: Record<string, string> = {
+  credentials: "Invalid email or password.",
   unauthorized: "That account isn't authorised for AshBets.",
-  oauth: "Sign-in failed. Please try again.",
-  callback: "Couldn't complete sign-in. Please try again.",
 };
 
 export default async function LoginPage({
@@ -25,15 +24,59 @@ export default async function LoginPage({
         </div>
 
         {message && (
-          <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <div
+            role="alert"
+            className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+          >
             {message}
           </div>
         )}
 
-        <LoginButton />
+        <form action={signInAction} className="space-y-4">
+          <div className="space-y-1">
+            <label
+              htmlFor="email"
+              className="block text-xs font-medium text-gray-700 dark:text-gray-300"
+            >
+              Email
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label
+              htmlFor="password"
+              className="block text-xs font-medium text-gray-700 dark:text-gray-300"
+            >
+              Password
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              className="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full rounded-md bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 text-sm font-medium transition-colors"
+          >
+            Sign in
+          </button>
+        </form>
 
         <p className="text-xs text-center text-gray-400">
-          Single-user access. Sign in with the authorised Google account.
+          Single-user access. Provision your user in Supabase → Authentication → Users.
         </p>
       </div>
     </div>

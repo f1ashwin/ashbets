@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/auth/sign-out"];
+const PUBLIC_PREFIXES = ["/login", "/auth/sign-out"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PREFIXES.some(
