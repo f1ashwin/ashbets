@@ -33,11 +33,7 @@ export const SPORT_CONFIGS: Record<Sport, SportConfig> = {
     label: "Football",
     oddsApiKeys: [
       "soccer_fifa_world_cup",
-      "soccer_uefa_champs_league",
-      "soccer_france_ligue_one",
-      "soccer_conmebol_copa_libertadores",
-      "soccer_brazil_campeonato",
-      "soccer_norway_eliteserien",
+      "soccer_uefa_champs_league", // PSG vs Arsenal May 30 — test match pre-WC
     ],
     markets: ["h2h", "totals"],
     icon: "circle-dot",
