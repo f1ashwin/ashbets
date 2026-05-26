@@ -6,6 +6,7 @@ import { events, predictions, eloRatings, oddsHistory } from "@/lib/db/schema";
 import { matchProbabilities } from "@/lib/predictions/elo";
 import { evaluateValue } from "@/lib/predictions/value-calculator";
 import { ingestOddsApi } from "@/lib/ingest/odds-api";
+import { settleCompletedEvents } from "@/lib/ingest/settle-events";
 
 export const maxDuration = 60;
 
@@ -101,6 +102,14 @@ async function handleCron(request: Request) {
         const probabilities = matchProbabilities(homeElo, awayElo, "football", true);
         const latestOdds = oddsByEvent[event.id] ?? [];
 
+        // Build companion odds map for vig stripping: "bookmaker:market" → { outcome → odds }
+        const companionMap: Record<string, Record<string, number>> = {};
+        for (const line of latestOdds) {
+          const k = `${line.bookmaker}:${line.market}`;
+          if (!companionMap[k]) companionMap[k] = {};
+          companionMap[k][line.outcome] = line.odds;
+        }
+
         let bestValue: any = null;
         let bestEdge = 0;
         for (const line of latestOdds) {
@@ -110,7 +119,8 @@ async function handleCron(request: Request) {
             if (line.outcome === "over") modelProb = (probabilities as any).over25 ?? 0;
             else if (line.outcome === "under") modelProb = (probabilities as any).under25 ?? 0;
           }
-          const signal = evaluateValue(modelProb, line.odds, line.bookmaker, line.outcome);
+          const companionOdds = Object.values(companionMap[`${line.bookmaker}:${line.market}`] ?? {});
+          const signal = evaluateValue(modelProb, line.odds, line.bookmaker, line.outcome, companionOdds);
           if (signal.isValue && signal.edge > bestEdge) {
             bestEdge = signal.edge;
             bestValue = { outcome: line.outcome, bookmaker: line.bookmaker, odds: line.odds, edge: signal.edge, ev: signal.ev };
@@ -133,7 +143,17 @@ async function handleCron(request: Request) {
     errors.push(`Predictions generation error: ${err.message}`);
   }
 
-  // 4. Invalidate Next.js cache tags
+  // 4. Auto-settle completed events
+  let betsSettled = 0;
+  try {
+    const settlement = await settleCompletedEvents();
+    betsSettled = settlement.betsSettled;
+    errors.push(...settlement.errors);
+  } catch (err: any) {
+    errors.push(`Settlement error: ${err.message}`);
+  }
+
+  // 5. Invalidate Next.js cache tags
   const invalidated: string[] = [];
   const target = url.searchParams.get("target") ?? "all";
   const tags = target === "all" ? ["odds", "predictions", "events", "elo"] : [target];
@@ -147,6 +167,7 @@ async function handleCron(request: Request) {
     eventsProcessed: ingestResult.eventsProcessed,
     oddsSnapshotsWritten: ingestResult.oddsSnapshotsWritten,
     predictionsCreated,
+    betsSettled,
     invalidated,
     errors: errors.length > 0 ? errors : undefined,
   });

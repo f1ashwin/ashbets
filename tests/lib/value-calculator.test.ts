@@ -3,13 +3,14 @@ import { evaluateValue, recommendedStake } from "@/lib/predictions/value-calcula
 
 describe("evaluateValue — raw Kelly", () => {
   it("returns an uncapped half-Kelly fraction so the caller can cap", () => {
-    const s = evaluateValue(0.8, 2.0, "tipico", "home");
+    // h2h companions: home 2.0, draw 3.5, away 4.5 (typical h2h market)
+    const s = evaluateValue(0.8, 2.0, "tipico", "home", [2.0, 3.5, 4.5]);
     // ev = 0.8 * 2 - 1 = 0.6; fullKelly = 0.6 / 1.0 = 0.6; halfKelly = 0.3
     expect(s.kellyFraction).toBeCloseTo(0.3, 5);
   });
 
   it("zeroes Kelly when ev <= 0", () => {
-    const s = evaluateValue(0.4, 2.0, "tipico", "home");
+    const s = evaluateValue(0.4, 2.0, "tipico", "home", [2.0, 3.5, 4.5]);
     expect(s.kellyFraction).toBe(0);
     expect(s.isValue).toBe(false);
   });

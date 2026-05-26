@@ -15,11 +15,29 @@ export interface ValueBetSignal {
   bookmaker: string;
   odds: number;
   modelProbability: number;
-  impliedProbability: number;
-  edge: number; // modelProbability - impliedProbability
+  impliedProbability: number; // vig-stripped fair probability
+  edge: number; // modelProbability - impliedProbability (vig-stripped)
   ev: number; // expected value per unit staked
   kellyFraction: number; // uncapped half-Kelly fraction of bankroll
   isValue: boolean; // edge > minimum threshold && ev > 0
+}
+
+/**
+ * Strip the bookmaker's vig from a set of raw decimal odds using the
+ * proportional method: normalize each raw implied probability so the set
+ * sums to exactly 1.0 (100%).
+ *
+ * Example: h2h market [2.10, 3.40, 3.60] — raw implied probs sum to 108.2%.
+ * After stripping: [home=44.2%, draw=27.3%, away=28.5%] — sums to 100%.
+ *
+ * @param targetOdds   The decimal odds for the specific outcome being evaluated
+ * @param allOutcomeOdds All decimal odds in the same market (including targetOdds)
+ */
+export function vigStrippedProb(targetOdds: number, allOutcomeOdds: number[]): number {
+  const rawImplied = allOutcomeOdds.map((o) => 1 / o);
+  const overround = rawImplied.reduce((s, p) => s + p, 0);
+  if (overround <= 0) return 1 / targetOdds; // fallback to raw if degenerate
+  return (1 / targetOdds) / overround;
 }
 
 /**
@@ -33,9 +51,10 @@ export function evaluateValue(
   modelProbability: number,
   decimalOdds: number,
   bookmaker: string,
-  outcome: string
+  outcome: string,
+  allOutcomeOdds: number[]
 ): ValueBetSignal {
-  const impliedProb = 1 / decimalOdds;
+  const impliedProb = vigStrippedProb(decimalOdds, allOutcomeOdds);
   const edge = modelProbability - impliedProb;
   const ev = modelProbability * decimalOdds - 1;
   const fullKelly = ev > 0 ? ev / (decimalOdds - 1) : 0;
@@ -71,7 +90,8 @@ export function findBestValue(
       const odds = bookie.outcomes[outcome];
       if (!odds) continue;
 
-      const signal = evaluateValue(modelProb, odds, bookie.bookmaker, outcome);
+      const allOdds = Object.values(bookie.outcomes).filter((o) => o > 0);
+      const signal = evaluateValue(modelProb, odds, bookie.bookmaker, outcome, allOdds);
       if (signal.isValue) {
         signals.push(signal);
       }
