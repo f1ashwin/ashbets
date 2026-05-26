@@ -9,6 +9,7 @@ export interface BestOddsRow {
   market: string;
   outcome: string;
   odds: number;
+  point: string | null;
   recordedAt: Date;
 }
 
@@ -32,6 +33,7 @@ export async function getLatestOddsForEvents(eventIds: string[]): Promise<BestOd
       market: oddsHistory.market,
       outcome: oddsHistory.outcome,
       odds: oddsHistory.odds,
+      point: oddsHistory.point,
       recordedAt: oddsHistory.recordedAt,
     })
     .from(oddsHistory)
@@ -44,7 +46,7 @@ export async function getLatestOddsForEvents(eventIds: string[]): Promise<BestOd
     const key = `${row.eventId}:${row.bookmaker}:${row.market}:${row.outcome}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    latest.push({ ...row, odds: Number(row.odds) });
+    latest.push({ ...row, odds: Number(row.odds), point: row.point ?? null });
   }
   return latest;
 }
