@@ -55,12 +55,21 @@ export async function getRenderedSignals(sport?: Sport): Promise<RenderedSignal[
     const eventOdds = oddsByEvent.get(p.eventId) ?? [];
     if (eventOdds.length === 0) continue;
 
+    // Build companion odds map for vig stripping: "bookmaker:market" → { outcome → odds }
+    const companionMap: Record<string, Record<string, number>> = {};
+    for (const o of eventOdds) {
+      const k = `${o.bookmaker}:${o.market}`;
+      if (!companionMap[k]) companionMap[k] = {};
+      companionMap[k][o.outcome] = o.odds;
+    }
+
     // Build one signal per (outcome, book) and keep the highest-edge entry.
     let best: { signal: ValueBetSignal; recordedAt: Date } | null = null;
     for (const [outcome, modelProb] of Object.entries(p.probabilities)) {
       for (const o of eventOdds) {
         if (o.outcome !== outcome) continue;
-        const s = evaluateValue(modelProb, o.odds, o.bookmaker, outcome);
+        const companionOdds = Object.values(companionMap[`${o.bookmaker}:${o.market}`] ?? {});
+        const s = evaluateValue(modelProb, o.odds, o.bookmaker, outcome, companionOdds);
         if (!s.isValue) continue;
         if (!best || s.edge > best.signal.edge) {
           best = { signal: s, recordedAt: o.recordedAt };
