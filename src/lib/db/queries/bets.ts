@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { betLegs, bets, clvTracking } from "@/lib/db/schema";
 
@@ -21,6 +21,15 @@ export async function getBetWithLegs(betId: string) {
   if (!betRow[0]) return null;
   const legs = await db.select().from(betLegs).where(eq(betLegs.betId, betId));
   return { bet: betRow[0], legs };
+}
+
+/** Pending bets for a batch of event IDs — used by settlement. */
+export async function getPendingBetsForEvents(eventIds: string[]) {
+  if (eventIds.length === 0) return [];
+  return db
+    .select()
+    .from(bets)
+    .where(and(inArray(bets.eventId, eventIds), eq(bets.status, "pending")));
 }
 
 /** Paper vs real spend totals for today, used by the daily-cap guard. */

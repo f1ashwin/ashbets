@@ -6,6 +6,7 @@ import { events, predictions, eloRatings, oddsHistory } from "@/lib/db/schema";
 import { matchProbabilities } from "@/lib/predictions/elo";
 import { evaluateValue } from "@/lib/predictions/value-calculator";
 import { ingestOddsApi } from "@/lib/ingest/odds-api";
+import { settleCompletedEvents } from "@/lib/ingest/settle-events";
 
 export const maxDuration = 60;
 
@@ -142,7 +143,17 @@ async function handleCron(request: Request) {
     errors.push(`Predictions generation error: ${err.message}`);
   }
 
-  // 4. Invalidate Next.js cache tags
+  // 4. Auto-settle completed events
+  let betsSettled = 0;
+  try {
+    const settlement = await settleCompletedEvents();
+    betsSettled = settlement.betsSettled;
+    errors.push(...settlement.errors);
+  } catch (err: any) {
+    errors.push(`Settlement error: ${err.message}`);
+  }
+
+  // 5. Invalidate Next.js cache tags
   const invalidated: string[] = [];
   const target = url.searchParams.get("target") ?? "all";
   const tags = target === "all" ? ["odds", "predictions", "events", "elo"] : [target];
@@ -156,6 +167,7 @@ async function handleCron(request: Request) {
     eventsProcessed: ingestResult.eventsProcessed,
     oddsSnapshotsWritten: ingestResult.oddsSnapshotsWritten,
     predictionsCreated,
+    betsSettled,
     invalidated,
     errors: errors.length > 0 ? errors : undefined,
   });
