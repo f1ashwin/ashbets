@@ -151,7 +151,7 @@ function MatchCardItem({
                 <div>
                   <span className="text-gray-500">Stake</span>
                   <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                    {formatCurrency(bet.stake)}
+                    {bet.stake > 0 ? formatCurrency(bet.stake) : "—"}
                   </div>
                 </div>
               </div>
@@ -178,7 +178,8 @@ function MatchCardItem({
                     edge: bet.edge,
                     stake: bet.stake,
                   }}
-                  label={`Log ${formatCurrency(bet.stake)}`}
+                  disabled={bet.stake === 0}
+                  label={bet.stake > 0 ? `Log ${formatCurrency(bet.stake)}` : "Fund bankroll"}
                 />
               </div>
             </div>

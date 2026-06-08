@@ -85,23 +85,21 @@ export function computeTopTwoBets(
       maxBetCurrency: Math.min(absoluteCap, currentDailyRemaining),
     });
     const stake = Math.round(stakeResult.stake * 100) / 100;
-    if (stake > 0) {
-      let selectionLabel = "Draw";
-      if (bestH2h.outcome === "home") selectionLabel = event.homeTeam;
-      else if (bestH2h.outcome === "away") selectionLabel = event.awayTeam;
-      matchBets.push({
-        market: "h2h",
-        selection: bestH2h.outcome,
-        selectionLabel,
-        bookmaker: bestH2h.bookmaker,
-        odds: bestH2h.odds,
-        edge: bestH2h.edge,
-        stake,
-        modelProbability: bestH2h.modelProbability,
-        hasEloWarning: eloWarning,
-      });
-      currentDailyRemaining -= stake;
-    }
+    let selectionLabel = "Draw";
+    if (bestH2h.outcome === "home") selectionLabel = event.homeTeam;
+    else if (bestH2h.outcome === "away") selectionLabel = event.awayTeam;
+    matchBets.push({
+      market: "h2h",
+      selection: bestH2h.outcome,
+      selectionLabel,
+      bookmaker: bestH2h.bookmaker,
+      odds: bestH2h.odds,
+      edge: bestH2h.edge,
+      stake,
+      modelProbability: bestH2h.modelProbability,
+      hasEloWarning: eloWarning,
+    });
+    currentDailyRemaining -= stake;
   }
 
   if (bestTotals) {
@@ -111,19 +109,17 @@ export function computeTopTwoBets(
       maxBetCurrency: Math.min(absoluteCap, currentDailyRemaining),
     });
     const stake = Math.round(stakeResult.stake * 100) / 100;
-    if (stake > 0) {
-      matchBets.push({
-        market: "totals",
-        selection: bestTotals.outcome,
-        selectionLabel: bestTotals.outcome === "over" ? "Over 2.5 Goals" : "Under 2.5 Goals",
-        bookmaker: bestTotals.bookmaker,
-        odds: bestTotals.odds,
-        edge: bestTotals.edge,
-        stake,
-        modelProbability: bestTotals.modelProbability,
-        hasEloWarning: eloWarning,
-      });
-    }
+    matchBets.push({
+      market: "totals",
+      selection: bestTotals.outcome,
+      selectionLabel: bestTotals.outcome === "over" ? "Over 2.5 Goals" : "Under 2.5 Goals",
+      bookmaker: bestTotals.bookmaker,
+      odds: bestTotals.odds,
+      edge: bestTotals.edge,
+      stake,
+      modelProbability: bestTotals.modelProbability,
+      hasEloWarning: eloWarning,
+    });
   }
 
   return matchBets;
